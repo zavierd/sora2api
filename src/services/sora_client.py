@@ -4,7 +4,8 @@ import io
 import time
 import random
 import string
-from typing import Optional, Dict, Any
+import re
+from typing import Optional, Dict, Any, Tuple
 from curl_cffi.requests import AsyncSession
 from curl_cffi import CurlMime
 from .proxy_manager import ProxyManager
@@ -29,7 +30,56 @@ class SoraClient:
         length = random.randint(10, 20)
         random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=length))
         return random_str
-    
+
+    @staticmethod
+    def is_storyboard_prompt(prompt: str) -> bool:
+        """检测提示词是否为分镜模式格式
+
+        格式: [time]prompt 或 [time]prompt\n[time]prompt
+        例如: [5.0s]猫猫从飞机上跳伞 [5.0s]猫猫降落
+
+        Args:
+            prompt: 用户输入的提示词
+
+        Returns:
+            True if prompt matches storyboard format
+        """
+        if not prompt:
+            return False
+        # 匹配格式: [数字s] 或 [数字.数字s]
+        pattern = r'\[\d+(?:\.\d+)?s\]'
+        matches = re.findall(pattern, prompt)
+        # 至少包含一个时间标记才认为是分镜模式
+        return len(matches) >= 1
+
+    @staticmethod
+    def format_storyboard_prompt(prompt: str) -> str:
+        """将分镜格式提示词转换为API所需格式
+
+        输入: [5.0s]猫猫从飞机上跳伞 [5.0s]猫猫降落 [1.0s]猫猫屋顶跑酷
+        输出: Shot 1:\nduration: 5.0sec\nScene: 猫猫从飞机上跳伞\n\nShot 2:\nduration: 5.0sec\nScene: 猫猫降落\n\nShot 3:\nduration: 1.0sec\nScene: 猫猫屋顶跑酷
+
+        Args:
+            prompt: 原始分镜格式提示词
+
+        Returns:
+            格式化后的API提示词
+        """
+        # 匹配 [时间]内容 的模式
+        pattern = r'\[(\d+(?:\.\d+)?)s\]\s*([^\[]+)'
+        matches = re.findall(pattern, prompt)
+
+        if not matches:
+            return prompt
+
+        formatted_shots = []
+        for idx, (duration, scene) in enumerate(matches, 1):
+            scene = scene.strip()
+            shot = f"Shot {idx}:\nduration: {duration}sec\nScene: {scene}"
+            formatted_shots.append(shot)
+
+        return "\n\n".join(formatted_shots)
+
     async def _make_request(self, method: str, endpoint: str, token: str,
                            json_data: Optional[Dict] = None,
                            multipart: Optional[Dict] = None,
@@ -611,4 +661,48 @@ class SoraClient:
         }
 
         result = await self._make_request("POST", "/nf/create", token, json_data=json_data, add_sentinel_token=True)
+        return result.get("id")
+
+    async def generate_storyboard(self, prompt: str, token: str, orientation: str = "landscape",
+                                 media_id: Optional[str] = None, n_frames: int = 450) -> str:
+        """Generate video using storyboard mode
+
+        Args:
+            prompt: Formatted storyboard prompt (Shot 1:\nduration: 5.0sec\nScene: ...)
+            token: Access token
+            orientation: Video orientation (portrait/landscape)
+            media_id: Optional image media_id for image-to-video
+            n_frames: Number of frames
+
+        Returns:
+            task_id
+        """
+        inpaint_items = []
+        if media_id:
+            inpaint_items = [{
+                "kind": "upload",
+                "upload_id": media_id
+            }]
+
+        json_data = {
+            "kind": "video",
+            "prompt": prompt,
+            "title": "Draft your video",
+            "orientation": orientation,
+            "size": "small",
+            "n_frames": n_frames,
+            "storyboard_id": None,
+            "inpaint_items": inpaint_items,
+            "remix_target_id": None,
+            "model": "sy_8",
+            "metadata": None,
+            "style_id": None,
+            "cameo_ids": None,
+            "cameo_replacements": None,
+            "audio_caption": None,
+            "audio_transcript": None,
+            "video_caption": None
+        }
+
+        result = await self._make_request("POST", "/nf/create/storyboard", token, json_data=json_data, add_sentinel_token=True)
         return result.get("id")

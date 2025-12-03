@@ -22,7 +22,6 @@
   - [管理后台](#管理后台)
   - [API 调用](#api-调用)
   - [视频角色功能](#视频角色功能)
-- [常见问题](#常见问题)
 - [许可证](#许可证)
 
 ---
@@ -129,6 +128,7 @@ python main.py
 | 创建角色 | `sora-video*` | 使用 `content` 数组 + `video_url` |
 | 角色生成视频 | `sora-video*` | 使用 `content` 数组 + `video_url` + 文本 |
 | Remix | `sora-video*` | 在 `content` 中包含 Remix ID |
+| 视频分镜 | `sora-video*` | 在 `content` 中使用```[时长s]提示词```格式触发 |
 
 ---
 
@@ -258,6 +258,8 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 
 **视频Remix（基于已有视频继续创作）**
 
+* 提示词内包含remix分享链接或id即可
+
 ```bash
 curl -X POST "http://localhost:8000/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
@@ -268,6 +270,32 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
       {
         "role": "user",
         "content": "https://sora.chatgpt.com/p/s_68e3a06dcd888191b150971da152c1f5改成水墨画风格"
+      }
+    ]
+  }'
+```
+
+**视频分镜**
+
+* 示例触发提示词：
+  ```[5.0s]猫猫从飞机上跳伞 [5.0s]猫猫降落 [10.0s]猫猫在田野奔跑```
+* 或
+  ```text
+  [5.0s]猫猫从飞机上跳伞
+  [5.0s]猫猫降落
+  [10.0s]猫猫在田野奔跑
+  ```
+
+```bash
+curl -X POST "http://localhost:8000/v1/chat/completions" \
+  -H "Authorization: Bearer han1234" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "sora-video-landscape-10s",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[5.0s]猫猫从飞机上跳伞 [5.0s]猫猫降落 [10.0s]猫猫在田野奔跑"
       }
     ]
   }'
