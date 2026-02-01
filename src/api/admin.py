@@ -12,6 +12,7 @@ from ..core.config import config
 from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
+from ..services.browser_fingerprint import get_random_fingerprint
 from ..core.database import Database
 from ..core.models import Token, AdminConfig, ProxyConfig
 
@@ -962,12 +963,14 @@ async def test_proxy_config(
     # Use provided test URL or default
     test_url = request.test_url or "https://sora.chatgpt.com"
 
+    # 使用随机浏览器指纹
+    fingerprint = get_random_fingerprint()
+
     try:
-        async with AsyncSession() as session:
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
             response = await session.get(
                 test_url,
                 timeout=15,
-                impersonate="chrome",
                 proxy=config_obj.proxy_url
             )
         status_code = response.status_code

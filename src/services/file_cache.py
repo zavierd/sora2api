@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from curl_cffi.requests import AsyncSession
 from ..core.config import config
 from ..core.logger import debug_logger
+from .browser_fingerprint import get_random_fingerprint
 
 
 class FileCache:
@@ -154,9 +155,12 @@ class FileCache:
             if self.proxy_manager:
                 proxy_url = await self.proxy_manager.get_proxy_url(token_id)
 
+            # 使用随机浏览器指纹
+            fingerprint = get_random_fingerprint()
+            
             # Download with proxy support
-            async with AsyncSession() as session:
-                kwargs = {"timeout": 60, "impersonate": "chrome"}
+            async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+                kwargs = {"timeout": 60}
                 if proxy_url:
                     kwargs["proxy"] = proxy_url
                 response = await session.get(url, **kwargs)

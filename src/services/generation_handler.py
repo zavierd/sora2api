@@ -12,6 +12,7 @@ from .token_manager import TokenManager
 from .load_balancer import LoadBalancer
 from .file_cache import FileCache
 from .concurrency_manager import ConcurrencyManager
+from .browser_fingerprint import get_random_fingerprint
 from ..core.database import Database
 from ..core.models import Task, RequestLog
 from ..core.config import config
@@ -376,15 +377,17 @@ class GenerationHandler:
 
         proxy_url = await self.load_balancer.proxy_manager.get_proxy_url()
 
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+
         kwargs = {
             "timeout": 30,
-            "impersonate": "chrome"
         }
 
         if proxy_url:
             kwargs["proxy"] = proxy_url
 
-        async with AsyncSession() as session:
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
             response = await session.get(url, **kwargs)
             if response.status_code != 200:
                 raise Exception(f"Failed to download file: {response.status_code}")

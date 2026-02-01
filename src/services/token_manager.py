@@ -10,6 +10,11 @@ from ..core.database import Database
 from ..core.models import Token, TokenStats
 from ..core.config import config
 from .proxy_manager import ProxyManager
+from .browser_fingerprint import (
+    get_random_fingerprint,
+    generate_fake_cf_clearance,
+    get_request_kwargs,
+)
 from ..core.logger import debug_logger
 
 class TokenManager:
@@ -63,18 +68,27 @@ class TokenManager:
         """Get user info from Sora API"""
         proxy_url = await self.proxy_manager.get_proxy_url(token_id, proxy_url)
 
-        async with AsyncSession() as session:
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Accept": "application/json",
                 "Origin": "https://sora.chatgpt.com",
-                "Referer": "https://sora.chatgpt.com/"
+                "Referer": "https://sora.chatgpt.com/",
+                "sec-ch-ua": f'"Google Chrome";v="{fingerprint["major"]}", "Chromium";v="{fingerprint["major"]}", "Not A(Brand";v="24"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"macOS"',
             }
 
             kwargs = {
                 "headers": headers,
                 "timeout": 30,
-                "impersonate": "chrome"  # 自动生成 User-Agent 和浏览器指纹
             }
 
             if proxy_url:
@@ -112,19 +126,29 @@ class TokenManager:
         print(f"🔍 开始获取订阅信息...")
         proxy_url = await self.proxy_manager.get_proxy_url(token_id, proxy_url)
 
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
         headers = {
-            "Authorization": f"Bearer {token}"
+            "Authorization": f"Bearer {token}",
+            "sec-ch-ua": f'"Google Chrome";v="{fingerprint["major"]}", "Chromium";v="{fingerprint["major"]}", "Not A(Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
         }
 
-        async with AsyncSession() as session:
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             url = "https://sora.chatgpt.com/backend/billing/subscriptions"
             print(f"📡 请求 URL: {url}")
             print(f"🔑 使用 Token: {token[:30]}...")
+            print(f"🔧 使用指纹: {fingerprint['impersonate']}")
 
             kwargs = {
                 "headers": headers,
                 "timeout": 30,
-                "impersonate": "chrome"  # 自动生成 User-Agent 和浏览器指纹
             }
 
             if proxy_url:
@@ -178,16 +202,26 @@ class TokenManager:
 
         print(f"🔍 开始获取Sora2邀请码...")
 
-        async with AsyncSession() as session:
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+        print(f"🔧 使用指纹: {fingerprint['impersonate']}")
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             headers = {
                 "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json"
+                "Accept": "application/json",
+                "sec-ch-ua": f'"Google Chrome";v="{fingerprint["major"]}", "Chromium";v="{fingerprint["major"]}", "Not A(Brand";v="24"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"macOS"',
             }
 
             kwargs = {
                 "headers": headers,
                 "timeout": 30,
-                "impersonate": "chrome"  # 自动生成 User-Agent 和浏览器指纹
             }
 
             if proxy_url:
@@ -286,17 +320,23 @@ class TokenManager:
 
         print(f"🔍 开始获取Sora2剩余次数...")
 
-        async with AsyncSession() as session:
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Accept": "application/json",
-                "User-Agent" : "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)"
+                "User-Agent": "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)"
             }
 
             kwargs = {
                 "headers": headers,
                 "timeout": 30,
-                "impersonate": "chrome"  # 自动生成 User-Agent 和浏览器指纹
             }
 
             if proxy_url:
@@ -344,7 +384,14 @@ class TokenManager:
 
         print(f"🔍 检查用户名是否可用: {username}")
 
-        async with AsyncSession() as session:
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json"
@@ -354,7 +401,6 @@ class TokenManager:
                 "headers": headers,
                 "json": {"username": username},
                 "timeout": 30,
-                "impersonate": "chrome"
             }
 
             if proxy_url:
@@ -392,7 +438,14 @@ class TokenManager:
 
         print(f"🔍 开始设置用户名: {username}")
 
-        async with AsyncSession() as session:
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json"
@@ -402,7 +455,6 @@ class TokenManager:
                 "headers": headers,
                 "json": {"username": username},
                 "timeout": 30,
-                "impersonate": "chrome"
             }
 
             if proxy_url:
@@ -433,24 +485,28 @@ class TokenManager:
         print(f"🔍 开始激活Sora2邀请码: {invite_code}")
         print(f"🔑 Access Token 前缀: {access_token[:50]}...")
 
-        async with AsyncSession() as session:
-            # 生成设备ID
-            device_id = str(uuid.uuid4())
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+        device_id = str(uuid.uuid4())
 
-            # 只设置必要的头，让 impersonate 处理其他
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+
             headers = {
                 "authorization": f"Bearer {access_token}",
                 "cookie": f"oai-did={device_id}"
             }
 
             print(f"🆔 设备ID: {device_id}")
+            print(f"🔧 使用指纹: {fingerprint['impersonate']}")
             print(f"📦 请求体: {{'invite_code': '{invite_code}'}}")
 
             kwargs = {
                 "headers": headers,
                 "json": {"invite_code": invite_code},
                 "timeout": 30,
-                "impersonate": "chrome120"  # 使用 chrome120 让库自动处理 UA 等头
             }
 
             if proxy_url:
@@ -481,7 +537,15 @@ class TokenManager:
         debug_logger.log_info(f"[ST_TO_AT] 开始转换 Session Token 为 Access Token...")
         proxy_url = await self.proxy_manager.get_proxy_url(proxy_url=proxy_url)
 
-        async with AsyncSession() as session:
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+        debug_logger.log_info(f"[ST_TO_AT] 使用指纹: {fingerprint['impersonate']}")
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             headers = {
                 "Cookie": f"__Secure-next-auth.session-token={session_token}",
                 "Accept": "application/json",
@@ -492,7 +556,6 @@ class TokenManager:
             kwargs = {
                 "headers": headers,
                 "timeout": 30,
-                "impersonate": "chrome"  # 自动生成 User-Agent 和浏览器指纹
             }
 
             if proxy_url:
@@ -571,7 +634,15 @@ class TokenManager:
         debug_logger.log_info(f"[RT_TO_AT] 使用 Client ID: {effective_client_id[:20]}...")
         proxy_url = await self.proxy_manager.get_proxy_url(proxy_url=proxy_url)
 
-        async with AsyncSession() as session:
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+        debug_logger.log_info(f"[RT_TO_AT] 使用指纹: {fingerprint['impersonate']}")
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="auth.openai.com")
+            
             headers = {
                 "Accept": "application/json",
                 "Content-Type": "application/json"
@@ -586,7 +657,6 @@ class TokenManager:
                     "refresh_token": refresh_token
                 },
                 "timeout": 30,
-                "impersonate": "chrome"  # 自动生成 User-Agent 和浏览器指纹
             }
 
             if proxy_url:

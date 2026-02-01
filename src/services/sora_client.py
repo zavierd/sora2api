@@ -16,6 +16,13 @@ from urllib.error import HTTPError, URLError
 from curl_cffi.requests import AsyncSession
 from curl_cffi import CurlMime
 from .proxy_manager import ProxyManager
+from .browser_fingerprint import (
+    get_random_fingerprint, 
+    generate_fake_cf_clearance,
+    create_browser_session,
+    get_request_kwargs,
+    BROWSER_FINGERPRINTS,
+)
 from ..core.config import config
 from ..core.logger import debug_logger
 
@@ -83,6 +90,8 @@ async def _close_browser():
 async def _fetch_oai_did(proxy_url: str = None, max_retries: int = 3) -> str:
     """Fetch oai-did using curl_cffi (lightweight approach)
     
+    使用随机浏览器指纹和假的 cf_clearance cookie 绕过 Cloudflare
+    
     Raises:
         Exception: If 403 or 429 response received
     """
@@ -90,9 +99,34 @@ async def _fetch_oai_did(proxy_url: str = None, max_retries: int = 3) -> str:
     
     for attempt in range(max_retries):
         try:
-            async with AsyncSession(impersonate="chrome120") as session:
+            # 每次尝试使用不同的指纹
+            fingerprint = get_random_fingerprint()
+            cf_clearance = generate_fake_cf_clearance()
+            
+            debug_logger.log_info(f"[Sentinel] Using fingerprint: {fingerprint['impersonate']}")
+            
+            async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+                # 预设假的 cf_clearance cookie
+                session.cookies.set("cf_clearance", cf_clearance, domain="chatgpt.com")
+                session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+                
+                # 构建请求头
+                headers = {
+                    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+                    "sec-ch-ua": f'"Google Chrome";v="{fingerprint["major"]}", "Chromium";v="{fingerprint["major"]}", "Not A(Brand";v="24"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"macOS"',
+                    "sec-fetch-dest": "document",
+                    "sec-fetch-mode": "navigate",
+                    "sec-fetch-site": "none",
+                    "sec-fetch-user": "?1",
+                    "upgrade-insecure-requests": "1",
+                }
+                
                 response = await session.get(
                     "https://chatgpt.com/",
+                    headers=headers,
                     proxy=proxy_url,
                     timeout=30,
                     allow_redirects=True
@@ -100,6 +134,10 @@ async def _fetch_oai_did(proxy_url: str = None, max_retries: int = 3) -> str:
                 
                 # Check for 403/429 errors - don't retry, just fail
                 if response.status_code == 403:
+                    debug_logger.log_info(f"[Sentinel] Got 403, trying next fingerprint...")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1)
+                        continue
                     raise Exception("403 Forbidden - Access denied when fetching oai-did")
                 if response.status_code == 429:
                     raise Exception("429 Too Many Requests - Rate limited when fetching oai-did")
@@ -115,18 +153,26 @@ async def _fetch_oai_did(proxy_url: str = None, max_retries: int = 3) -> str:
                     oai_did = match.group(1)
                     debug_logger.log_info(f"[Sentinel] oai-did: {oai_did}")
                     return oai_did
+                
+                # 如果没有获取到 oai-did，生成一个
+                debug_logger.log_info(f"[Sentinel] No oai-did in response, generating one...")
+                return str(uuid4())
                     
         except Exception as e:
             error_str = str(e)
-            # Re-raise 403/429 errors immediately
-            if "403" in error_str or "429" in error_str:
+            # Re-raise 429 errors immediately
+            if "429" in error_str:
                 raise
-            debug_logger.log_info(f"[Sentinel] oai-did fetch failed: {e}")
+            # 403 可以重试不同指纹
+            if "403" not in error_str:
+                debug_logger.log_info(f"[Sentinel] oai-did fetch failed: {e}")
         
         if attempt < max_retries - 1:
             await asyncio.sleep(2)
     
-    return None
+    # 最后返回生成的 UUID
+    debug_logger.log_info(f"[Sentinel] All retries failed, generating oai-did...")
+    return str(uuid4())
 
 
 async def _generate_sentinel_token_lightweight(proxy_url: str = None, device_id: str = None) -> str:
@@ -814,9 +860,13 @@ class SoraClient:
         """
         proxy_url = await self.proxy_manager.get_proxy_url(token_id)
 
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
         headers = {
             "Authorization": f"Bearer {token}",
-            "User-Agent" : "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)"
+            "User-Agent": "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)"
         }
 
         # 只在生成请求时添加 sentinel token
@@ -828,13 +878,15 @@ class SoraClient:
         if not multipart:
             headers["Content-Type"] = "application/json"
 
-        async with AsyncSession() as session:
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             url = f"{self.base_url}{endpoint}"
 
             kwargs = {
                 "headers": headers,
                 "timeout": self.timeout,
-                "impersonate": "chrome"  # 自动生成 User-Agent 和浏览器指纹
             }
 
             if proxy_url:
@@ -1144,17 +1196,23 @@ class SoraClient:
         """
         proxy_url = await self.proxy_manager.get_proxy_url()
 
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
         headers = {
             "Authorization": f"Bearer {token}"
         }
 
-        async with AsyncSession() as session:
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             url = f"{self.base_url}/project_y/post/{post_id}"
 
             kwargs = {
                 "headers": headers,
                 "timeout": self.timeout,
-                "impersonate": "chrome"
             }
 
             if proxy_url:
@@ -1217,6 +1275,9 @@ class SoraClient:
         """
         proxy_url = await self.proxy_manager.get_proxy_url()
 
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+
         # Construct the share URL
         share_url = f"https://sora.chatgpt.com/p/{post_id}"
 
@@ -1229,14 +1290,13 @@ class SoraClient:
         kwargs = {
             "json": json_data,
             "timeout": 30,
-            "impersonate": "chrome"
         }
 
         if proxy_url:
             kwargs["proxy"] = proxy_url
 
         try:
-            async with AsyncSession() as session:
+            async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
                 # Record start time
                 start_time = time.time()
 
@@ -1347,15 +1407,17 @@ class SoraClient:
         """
         proxy_url = await self.proxy_manager.get_proxy_url()
 
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+
         kwargs = {
             "timeout": self.timeout,
-            "impersonate": "chrome"
         }
 
         if proxy_url:
             kwargs["proxy"] = proxy_url
 
-        async with AsyncSession() as session:
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
             response = await session.get(image_url, **kwargs)
             if response.status_code != 200:
                 raise Exception(f"Failed to download image: {response.status_code}")
@@ -1442,17 +1504,23 @@ class SoraClient:
         """
         proxy_url = await self.proxy_manager.get_proxy_url()
 
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+
         headers = {
             "Authorization": f"Bearer {token}"
         }
 
-        async with AsyncSession() as session:
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
             url = f"{self.base_url}/project_y/characters/{character_id}"
 
             kwargs = {
                 "headers": headers,
                 "timeout": self.timeout,
-                "impersonate": "chrome"
             }
 
             if proxy_url:
