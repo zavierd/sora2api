@@ -1,0 +1,106 @@
+# Sora2API 服务器部署配置
+#
+# 此配置用于在已有 CLIProxyAPI 的服务器上部署 Sora2API
+# 连接到 CLIProxyAPI 的现有网络 (new-api_default)
+#
+# 使用方法:
+#   cd /root/sora2api
+#   docker-compose -f docker-compose.server.yml up -d
+#
+# 环境变量:
+#   SORA2API_ADMIN_USER - 管理员用户名 (默认: admin)
+#   SORA2API_ADMIN_PASS - 管理员密码 (默认: admin)
+#   SYNC_INTERVAL - 同步间隔秒数 (默认: 3600)
+
+services:
+  # Sora2API 主服务
+  sora2api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sora2api:latest
+    container_name: sora2api
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "8000:8000"
+    volumes:
+      # 配置文件
+      - ./config/setting.toml:/app/config/setting.toml
+      # 数据持久化
+      - ./data:/app/data
+      # 缓存目录
+      - ./cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - new-api_default
+
+  # 账号同步服务 (定时从 CLIProxyAPI 同步 Codex 账号)
+  sora-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sora2api:latest
+    container_name: sora-sync
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo "========================================"
+        echo " Sora2API Account Sync Service"
+        echo "========================================"
+        echo "CLIPROXY_AUTH_DIR: /cliproxy_auths"
+        echo "SORA2API_URL: http://sora2api:8000"
+        echo "SYNC_INTERVAL: $${SYNC_INTERVAL:-3600}s"
+        echo "========================================"
+        
+        # 等待 sora2api 启动
+        echo "Waiting for sora2api to start..."
+        sleep 30
+        
+        # 首次同步
+        echo "=== Initial sync at $$(date) ==="
+        python3 /app/scripts/sync_from_cliproxy.py \
+          --auth-dir /cliproxy_auths \
+          --sora-url http://sora2api:8000 \
+          --sora-user $${SORA2API_ADMIN_USER:-admin} \
+          --sora-pass $${SORA2API_ADMIN_PASS:-admin} \
+          -v || echo "Initial sync failed, will retry..."
+        
+        # 定时同步循环
+        while true; do
+          echo "Sleeping $${SYNC_INTERVAL:-3600}s until next sync..."
+          sleep $${SYNC_INTERVAL:-3600}
+          echo "=== Sync at $$(date) ==="
+          python3 /app/scripts/sync_from_cliproxy.py \
+            --auth-dir /cliproxy_auths \
+            --sora-url http://sora2api:8000 \
+            --sora-user $${SORA2API_ADMIN_USER:-admin} \
+            --sora-pass $${SORA2API_ADMIN_PASS:-admin} \
+            -v
+        done
+    environment:
+      - TZ=Asia/Shanghai
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-3600}
+      - SORA2API_ADMIN_USER=${SORA2API_ADMIN_USER:-admin}
+      - SORA2API_ADMIN_PASS=${SORA2API_ADMIN_PASS:-admin}
+      - CODEX_CLIENT_ID=${CODEX_CLIENT_ID:-app_EMoamEEZ73f0CkXaXp7hrann}
+    volumes:
+      # 挂载 CLIProxyAPI 认证目录 (只读)
+      - /root/CLIProxyAPI/auths:/cliproxy_auths:ro
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      sora2api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - new-api_default
+
+networks:
+  new-api_default:
+    external: true
