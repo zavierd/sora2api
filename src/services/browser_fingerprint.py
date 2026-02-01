@@ -10,17 +10,17 @@ from curl_cffi.requests import AsyncSession
 
 
 # 支持的浏览器指纹配置（指纹 + 对应的 User-Agent 信息）
-# 选择现代、常用的 Chrome 版本，确保指纹和 UA 匹配
+# chrome123 经测试可以穿透 Cloudflare，优先使用
 BROWSER_FINGERPRINTS = [
-    {
-        "impersonate": "chrome120",
-        "version": "120.0.0.0",
-        "major": "120",
-    },
     {
         "impersonate": "chrome123",
         "version": "123.0.0.0",
         "major": "123",
+    },
+    {
+        "impersonate": "chrome120",
+        "version": "120.0.0.0",
+        "major": "120",
     },
     {
         "impersonate": "chrome124",
@@ -34,9 +34,15 @@ BROWSER_FINGERPRINTS = [
     },
 ]
 
+# 默认使用 chrome123（经测试可穿透 CF）
+DEFAULT_FINGERPRINT = BROWSER_FINGERPRINTS[0]
+
 
 def get_random_fingerprint() -> dict:
-    """随机选择一个浏览器指纹配置"""
+    """获取浏览器指纹配置（优先使用 chrome123）"""
+    # 80% 概率使用 chrome123，20% 随机
+    if random.random() < 0.8:
+        return DEFAULT_FINGERPRINT
     return random.choice(BROWSER_FINGERPRINTS)
 
 
