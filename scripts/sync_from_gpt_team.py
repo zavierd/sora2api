@@ -19,6 +19,7 @@ import sys
 import json
 import argparse
 import logging
+import base64
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -149,6 +150,23 @@ class MySQLClient:
             return []
 
 
+def decode_jwt_payload(token: str) -> Dict:
+    """从 JWT token 中解码 payload（不验证签名）"""
+    try:
+        parts = token.split(".")
+        if len(parts) >= 2:
+            payload = parts[1]
+            # 添加 padding
+            padding = 4 - len(payload) % 4
+            if padding != 4:
+                payload += "=" * padding
+            decoded = base64.urlsafe_b64decode(payload)
+            return json.loads(decoded)
+    except Exception as e:
+        logger.warning(f"Failed to decode JWT: {e}")
+    return {}
+
+
 class Sora2APIClient:
     """Sora2API 客户端"""
     
@@ -197,15 +215,31 @@ class Sora2APIClient:
             return []
     
     def add_token(self, token_value: str, proxy_url: str = "", 
-                  image_concurrency: int = 1, video_concurrency: int = 3) -> Dict:
-        """添加单个 Token (使用原始 access_token)"""
+                  image_concurrency: int = 1, video_concurrency: int = 3,
+                  client_id: str = None) -> Dict:
+        """添加单个 Token (使用原始 access_token)
+        
+        如果未提供 client_id，会从 JWT token 中自动提取
+        """
         try:
+            # 如果未提供 client_id，从 JWT 中提取
+            if not client_id:
+                jwt_payload = decode_jwt_payload(token_value)
+                client_id = jwt_payload.get("client_id")
+                if client_id:
+                    logger.info(f"  📌 从 JWT 提取 client_id: {client_id[:20]}...")
+            
             payload = {
                 "token": token_value,
                 "proxy_url": proxy_url,
                 "image_concurrency": image_concurrency,
                 "video_concurrency": video_concurrency
             }
+            
+            # 如果有 client_id，添加到 payload
+            if client_id:
+                payload["client_id"] = client_id
+            
             resp = self.session.post(
                 f"{self.base_url}/api/tokens",
                 headers=self._headers(),
