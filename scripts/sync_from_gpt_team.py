@@ -207,7 +207,7 @@ class Sora2APIClient:
                 "video_concurrency": video_concurrency
             }
             resp = self.session.post(
-                f"{self.base_url}/api/tokens/add",
+                f"{self.base_url}/api/tokens",
                 headers=self._headers(),
                 json=payload,
                 timeout=120
