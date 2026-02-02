@@ -23,7 +23,8 @@ services:
     environment:
       - TZ=Asia/Shanghai
     ports:
-      - "8000:8000"
+      # 只绑定本地，外网通过 new-api 访问
+      - "127.0.0.1:8385:8385"
     volumes:
       # 配置文件
       - ./config/setting.toml:/app/config/setting.toml
@@ -33,7 +34,7 @@ services:
       - ./cache:/app/cache
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8385/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,7 +56,7 @@ services:
         echo " Sora2API Account Sync Service"
         echo "========================================"
         echo "CLIPROXY_AUTH_DIR: /cliproxy_auths"
-        echo "SORA2API_URL: http://sora2api:8000"
+        echo "SORA2API_URL: http://sora2api:8385"
         echo "SYNC_INTERVAL: $${SYNC_INTERVAL:-3600}s"
         echo "========================================"
         
@@ -67,7 +68,7 @@ services:
         echo "=== Initial sync at $$(date) ==="
         python3 /app/scripts/sync_from_cliproxy.py \
           --auth-dir /cliproxy_auths \
-          --sora-url http://sora2api:8000 \
+          --sora-url http://sora2api:8385 \
           --sora-user $${SORA2API_ADMIN_USER:-admin} \
           --sora-pass $${SORA2API_ADMIN_PASS:-admin} \
           -v || echo "Initial sync failed, will retry..."
@@ -79,7 +80,7 @@ services:
           echo "=== Sync at $$(date) ==="
           python3 /app/scripts/sync_from_cliproxy.py \
             --auth-dir /cliproxy_auths \
-            --sora-url http://sora2api:8000 \
+            --sora-url http://sora2api:8385 \
             --sora-user $${SORA2API_ADMIN_USER:-admin} \
             --sora-pass $${SORA2API_ADMIN_PASS:-admin} \
             -v
@@ -97,6 +98,20 @@ services:
     depends_on:
       sora2api:
         condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - new-api_default
+
+  # Sora2API 代理服务 (供 CPAMC 前端访问)
+  sora-proxy:
+    image: nginx:alpine
+    container_name: sora-proxy
+    ports:
+      - "8386:80"
+    volumes:
+      - ./nginx-proxy.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - sora2api
     restart: unless-stopped
     networks:
       - new-api_default

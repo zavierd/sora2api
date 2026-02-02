@@ -10,17 +10,22 @@ from curl_cffi.requests import AsyncSession
 
 
 # 支持的浏览器指纹配置（指纹 + 对应的 User-Agent 信息）
-# chrome123 经测试可以穿透 Cloudflare，优先使用
+# 使用最新版本的浏览器指纹以更好地绕过 Cloudflare
 BROWSER_FINGERPRINTS = [
     {
-        "impersonate": "chrome123",
-        "version": "123.0.0.0",
-        "major": "123",
+        "impersonate": "chrome136",
+        "version": "136.0.0.0",
+        "major": "136",
     },
     {
-        "impersonate": "chrome120",
-        "version": "120.0.0.0",
-        "major": "120",
+        "impersonate": "chrome133a",
+        "version": "133.0.0.0",
+        "major": "133",
+    },
+    {
+        "impersonate": "chrome131",
+        "version": "131.0.0.0",
+        "major": "131",
     },
     {
         "impersonate": "chrome124",
@@ -28,13 +33,13 @@ BROWSER_FINGERPRINTS = [
         "major": "124",
     },
     {
-        "impersonate": "chrome131",
-        "version": "131.0.0.0",
-        "major": "131",
+        "impersonate": "chrome123",
+        "version": "123.0.0.0",
+        "major": "123",
     },
 ]
 
-# 默认使用 chrome123（经测试可穿透 CF）
+# 默认使用 chrome136（最新版本）
 DEFAULT_FINGERPRINT = BROWSER_FINGERPRINTS[0]
 
 
