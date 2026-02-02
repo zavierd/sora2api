@@ -441,7 +441,7 @@ class SoraClient:
             None,  # [6] must be null
             lang[0],  # [7] language
             lang[1],  # [8] languages
-            0,  # [9] should be 0 as per openai-sentinel implementation
+            random.randint(2, 10),  # [9] random initial value for dynamic calc
             random.choice(POW_NAVIGATOR_KEYS),  # [10] navigator key
             random.choice(POW_DOCUMENT_KEYS),  # [11] document key
             random.choice(POW_WINDOW_KEYS),  # [12] window key
@@ -467,8 +467,7 @@ class SoraClient:
         for i in range(POW_MAX_ITERATION):
             dynamic_i = str(i).encode()
 
-            # Use i >> 1 (bit shift right by 1, equivalent to i // 2) as per openai-sentinel implementation
-            dynamic_j = str(i >> 1).encode()
+            dynamic_j = str(initial_j + (i + 29) // 30).encode()
 
             final_json = static_part1 + dynamic_i + static_part2 + dynamic_j + static_part3
             b64_encoded = base64.b64encode(final_json)
