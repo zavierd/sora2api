@@ -38,8 +38,12 @@ task_max_retries = 3
 auto_disable_on_401 = true
 
 [proxy]
-proxy_enabled = false
-proxy_url = ""
+proxy_enabled = true
+proxy_url = "http://mjvgdvln:M1kGthPUKWMb@154.63.49.140:5782"
+
+[pow_proxy]
+pow_proxy_enabled = true
+pow_proxy_url = "http://mjvgdvln:M1kGthPUKWMb@154.63.49.140:5782"
 
 [watermark_free]
 watermark_free_enabled = false
