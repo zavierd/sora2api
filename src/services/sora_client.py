@@ -255,7 +255,7 @@ async def _generate_sentinel_token_lightweight(proxy_url: str = None, device_id:
         token = await page.evaluate(f'''
             async () => {{
                 try {{
-                    return await SentinelSDK.token('sora_2_create_task', '{device_id}');
+                    return await SentinelSDK.token('sora_2_create_task__auto', '{device_id}');
                 }} catch (e) {{
                     return 'ERROR: ' + e.message;
                 }}
