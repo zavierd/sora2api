@@ -42,7 +42,7 @@ services:
     networks:
       - new-api_default
 
-  # 账号同步服务 (定时从 CLIProxyAPI 同步 Codex 账号)
+  # 账号同步服务 (定时从 gpt_team MySQL 同步原始 ChatGPT 账号)
   sora-sync:
     build:
       context: .
@@ -54,8 +54,10 @@ services:
       - |
         echo "========================================"
         echo " Sora2API Account Sync Service"
+        echo " Data Source: gpt_team MySQL"
         echo "========================================"
-        echo "CLIPROXY_AUTH_DIR: /cliproxy_auths"
+        echo "MYSQL_HOST: $${GPT_TEAM_MYSQL_HOST:-mysql}"
+        echo "MYSQL_DATABASE: $${GPT_TEAM_MYSQL_DATABASE:-gpt_team}"
         echo "SORA2API_URL: http://sora2api:8385"
         echo "SYNC_INTERVAL: $${SYNC_INTERVAL:-3600}s"
         echo "========================================"
@@ -66,8 +68,12 @@ services:
         
         # 首次同步
         echo "=== Initial sync at $$(date) ==="
-        python3 /app/scripts/sync_from_cliproxy.py \
-          --auth-dir /cliproxy_auths \
+        python3 /app/scripts/sync_from_gpt_team.py \
+          --mysql-host $${GPT_TEAM_MYSQL_HOST:-mysql} \
+          --mysql-port $${GPT_TEAM_MYSQL_PORT:-3306} \
+          --mysql-user $${GPT_TEAM_MYSQL_USER:-root} \
+          --mysql-pass "$${GPT_TEAM_MYSQL_PASSWORD:-Gemini2024!}" \
+          --mysql-db $${GPT_TEAM_MYSQL_DATABASE:-gpt_team} \
           --sora-url http://sora2api:8385 \
           --sora-user $${SORA2API_ADMIN_USER:-admin} \
           --sora-pass $${SORA2API_ADMIN_PASS:-admin} \
@@ -78,8 +84,12 @@ services:
           echo "Sleeping $${SYNC_INTERVAL:-3600}s until next sync..."
           sleep $${SYNC_INTERVAL:-3600}
           echo "=== Sync at $$(date) ==="
-          python3 /app/scripts/sync_from_cliproxy.py \
-            --auth-dir /cliproxy_auths \
+          python3 /app/scripts/sync_from_gpt_team.py \
+            --mysql-host $${GPT_TEAM_MYSQL_HOST:-mysql} \
+            --mysql-port $${GPT_TEAM_MYSQL_PORT:-3306} \
+            --mysql-user $${GPT_TEAM_MYSQL_USER:-root} \
+            --mysql-pass "$${GPT_TEAM_MYSQL_PASSWORD:-Gemini2024!}" \
+            --mysql-db $${GPT_TEAM_MYSQL_DATABASE:-gpt_team} \
             --sora-url http://sora2api:8385 \
             --sora-user $${SORA2API_ADMIN_USER:-admin} \
             --sora-pass $${SORA2API_ADMIN_PASS:-admin} \
@@ -90,10 +100,13 @@ services:
       - SYNC_INTERVAL=${SYNC_INTERVAL:-3600}
       - SORA2API_ADMIN_USER=${SORA2API_ADMIN_USER:-admin}
       - SORA2API_ADMIN_PASS=${SORA2API_ADMIN_PASS:-admin}
-      - CODEX_CLIENT_ID=${CODEX_CLIENT_ID:-app_EMoamEEZ73f0CkXaXp7hrann}
+      # MySQL 配置 (gpt_team 数据库)
+      - GPT_TEAM_MYSQL_HOST=${GPT_TEAM_MYSQL_HOST:-mysql}
+      - GPT_TEAM_MYSQL_PORT=${GPT_TEAM_MYSQL_PORT:-3306}
+      - GPT_TEAM_MYSQL_USER=${GPT_TEAM_MYSQL_USER:-root}
+      - GPT_TEAM_MYSQL_PASSWORD=${GPT_TEAM_MYSQL_PASSWORD:-Gemini2024!}
+      - GPT_TEAM_MYSQL_DATABASE=${GPT_TEAM_MYSQL_DATABASE:-gpt_team}
     volumes:
-      # 挂载 CLIProxyAPI 认证目录 (只读)
-      - /root/CLIProxyAPI/auths:/cliproxy_auths:ro
       - ./scripts:/app/scripts:ro
     depends_on:
       sora2api:
