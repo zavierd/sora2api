@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     libx11-6 \
     libxcb1 \
     libxext6 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
