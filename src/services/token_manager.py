@@ -64,6 +64,70 @@ class TokenManager:
         # 转换为小写
         return format_choice.lower()
 
+    async def create_sora_account(self, access_token: str, birth_date: str = "1995-06-15", token_id: Optional[int] = None, proxy_url: Optional[str] = None) -> dict:
+        """Create Sora account (onboarding) for a ChatGPT account
+        
+        This is required for accounts that haven't completed Sora onboarding.
+        
+        Args:
+            access_token: Access token for authentication
+            birth_date: Birth date in YYYY-MM-DD format (default: 1995-06-15)
+            token_id: Token ID for proxy lookup (optional)
+            proxy_url: Proxy URL (optional)
+            
+        Returns:
+            User profile information after onboarding
+        """
+        proxy_url = await self.proxy_manager.get_proxy_url(token_id, proxy_url)
+
+        print(f"🔍 开始创建 Sora 账号 (onboarding)...")
+
+        # 使用随机浏览器指纹
+        fingerprint = get_random_fingerprint()
+        cf_clearance = generate_fake_cf_clearance()
+        print(f"🔧 使用指纹: {fingerprint['impersonate']}")
+
+        async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
+            # 预设假的 cf_clearance cookie
+            session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Origin": "https://sora.chatgpt.com",
+                "Referer": "https://sora.chatgpt.com/",
+                "sec-ch-ua": f'"Google Chrome";v="{fingerprint["major"]}", "Chromium";v="{fingerprint["major"]}", "Not A(Brand";v="24"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"macOS"',
+            }
+
+            kwargs = {
+                "headers": headers,
+                "json": {"birth_date": birth_date},
+                "timeout": 30,
+            }
+
+            if proxy_url:
+                kwargs["proxy"] = proxy_url
+                print(f"🌐 使用代理: {proxy_url}")
+
+            response = await session.post(
+                "https://sora.chatgpt.com/backend/me/onboarding/create_account",
+                **kwargs
+            )
+
+            print(f"📥 响应状态码: {response.status_code}")
+
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ Sora 账号创建成功: {data.get('username')}")
+                return data
+            else:
+                print(f"❌ Sora 账号创建失败: {response.status_code}")
+                print(f"📄 响应内容: {response.text[:500]}")
+                raise Exception(f"Failed to create Sora account: {response.status_code} - {response.text[:200]}")
+
     async def get_user_info(self, access_token: str, token_id: Optional[int] = None, proxy_url: Optional[str] = None) -> dict:
         """Get user info from Sora API"""
         proxy_url = await self.proxy_manager.get_proxy_url(token_id, proxy_url)
@@ -109,6 +173,9 @@ class TokenManager:
                             raise ValueError(f"401 token_invalidated: Token has been invalidated")
                     except (ValueError, KeyError):
                         pass
+                # Check if it's a 404 (account not onboarded)
+                if response.status_code == 404:
+                    raise ValueError(f"404 not_found: Account not onboarded for Sora")
                 raise ValueError(f"Failed to get user info: {response.status_code}")
 
             return response.json()
@@ -795,9 +862,25 @@ class TokenManager:
                 email = user_info.get("email", jwt_email or "")
                 name = user_info.get("name") or ""
             except Exception as e:
-                # If API call fails, use JWT data
-                email = jwt_email or ""
-                name = email.split("@")[0] if email else ""
+                error_msg = str(e)
+                # Check if it's a 404 (account not onboarded for Sora)
+                if "404" in error_msg and "not_found" in error_msg.lower():
+                    print(f"⚠️  账号尚未完成 Sora onboarding，自动创建...")
+                    try:
+                        # Auto onboarding: create Sora account
+                        onboard_result = await self.create_sora_account(token_value, proxy_url=proxy_url)
+                        email = onboard_result.get("email", jwt_email or "")
+                        name = onboard_result.get("name") or ""
+                        print(f"✅ Sora onboarding 完成: {email}")
+                    except Exception as onboard_e:
+                        print(f"❌ Sora onboarding 失败: {onboard_e}")
+                        # If onboarding also fails, use JWT data
+                        email = jwt_email or ""
+                        name = email.split("@")[0] if email else ""
+                else:
+                    # If API call fails for other reasons, use JWT data
+                    email = jwt_email or ""
+                    name = email.split("@")[0] if email else ""
 
             # Get subscription info from Sora API
             try:
@@ -1039,7 +1122,22 @@ class TokenManager:
 
         try:
             # Try to get user info from Sora API
-            user_info = await self.get_user_info(token_data.token, token_id)
+            try:
+                user_info = await self.get_user_info(token_data.token, token_id)
+            except Exception as e:
+                error_msg = str(e)
+                # Check if it's a 404 (account not onboarded for Sora)
+                if "404" in error_msg and "not_found" in error_msg.lower():
+                    print(f"⚠️  账号尚未完成 Sora onboarding，自动创建...")
+                    try:
+                        # Auto onboarding: create Sora account
+                        user_info = await self.create_sora_account(token_data.token, token_id=token_id)
+                        print(f"✅ Sora onboarding 完成: {user_info.get('email')}")
+                    except Exception as onboard_e:
+                        print(f"❌ Sora onboarding 失败: {onboard_e}")
+                        raise onboard_e
+                else:
+                    raise e
 
             # Get subscription info from Sora API
             plan_type = None
