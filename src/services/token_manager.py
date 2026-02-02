@@ -78,6 +78,8 @@ class TokenManager:
         Returns:
             User profile information after onboarding
         """
+        import uuid
+        
         proxy_url = await self.proxy_manager.get_proxy_url(token_id, proxy_url)
 
         print(f"🔍 开始创建 Sora 账号 (onboarding)...")
@@ -88,8 +90,23 @@ class TokenManager:
         print(f"🔧 使用指纹: {fingerprint['impersonate']}")
 
         async with AsyncSession(impersonate=fingerprint["impersonate"]) as session:
-            # 预设假的 cf_clearance cookie
+            # 1. 先从 chatgpt.com 获取 oai-did cookie
+            print("📡 获取 OAI-Device-Id...")
+            try:
+                init_resp = await session.get("https://chatgpt.com/", timeout=15)
+                oai_did = session.cookies.get("oai-did", domain="chatgpt.com")
+            except:
+                oai_did = None
+            
+            if not oai_did:
+                oai_did = str(uuid.uuid4())
+                print(f"   生成新的 oai-did: {oai_did[:20]}...")
+            else:
+                print(f"   获取到 oai-did: {oai_did[:20]}...")
+            
+            # 设置 cookies
             session.cookies.set("cf_clearance", cf_clearance, domain="sora.chatgpt.com")
+            session.cookies.set("oai-did", oai_did, domain="sora.chatgpt.com")
             
             headers = {
                 "Authorization": f"Bearer {access_token}",
@@ -97,6 +114,7 @@ class TokenManager:
                 "Accept": "application/json",
                 "Origin": "https://sora.chatgpt.com",
                 "Referer": "https://sora.chatgpt.com/",
+                "OAI-Device-Id": oai_did,
                 "sec-ch-ua": f'"Google Chrome";v="{fingerprint["major"]}", "Chromium";v="{fingerprint["major"]}", "Not A(Brand";v="24"',
                 "sec-ch-ua-mobile": "?0",
                 "sec-ch-ua-platform": '"macOS"',
